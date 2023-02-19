@@ -8,6 +8,7 @@
 ```cmd
 cd PATH_TO_CODE
 conda create --name spine-analysis -c conda-forge --file requirements.txt -y
+pip install napari[all]
 ```
 ## Run
 1. Open Anaconda
