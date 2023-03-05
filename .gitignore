@@ -136,5 +136,6 @@ output/
 *.off
 *.json
 test/
+CGAL/
 
 .idea/
