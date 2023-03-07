@@ -16,7 +16,7 @@ def get_weight(n1, n2, img, factor, dx, dy, dz):
     z2, x2, y2 = n2
     I = (0.5 * img[z1][x1][y1] + 0.5 * img[z2][x2][y2]) / 255
     dist = np.sqrt((z1 - z2)**2*dz**2 + (x1 - x2)**2*dx**2 + (y1 - y2)**2*dy**2)
-    return (1 - I) * factor + dist
+    return max(-I * factor + dist, 0)
 
 
 def get_edges(node, img, factor, dx, dy, dz):
@@ -36,7 +36,7 @@ def get_edges(node, img, factor, dx, dy, dz):
     return edges
 
 
-def floodfill(img, path, size=5, factor=0.6, flood_all=False):
+def floodfill(img, path, size=5, factor=0.6):
     print("Start floodfill")
     flooded = []
     box_coords = list(product(range(-size, size + 1), range(-size, size + 1),  range(-size, size + 1)))
@@ -51,7 +51,7 @@ def floodfill(img, path, size=5, factor=0.6, flood_all=False):
             i = p[1] + coord[1]
             j = p[2] + coord[2]
             if 0 <= i and i < h and 0 <= j and j < w and 0 <= k < z:
-                if filtered[k][i][j] > filtered[p[0]][p[1]][p[2]] * factor or flood_all:
+                if filtered[k][i][j] >= filtered[p[0]][p[1]][p[2]] * factor:
                     flooded.append((k, i, j))
     print("Floodfill finished")
     return flooded
@@ -89,10 +89,10 @@ def get_reconnection_widget(img, binary):
 
     @magicgui(
         call_button="Reconnect",
-        x_scale={"widget_type": "FloatSlider", 'min': 0, 'max': 1, 'step':0.01},
-        y_scale={"widget_type": "FloatSlider", 'min': 0, 'max': 1, 'step':0.01},
-        z_scale={"widget_type": "FloatSlider", 'min': 0, 'max': 1, 'step':0.01},
-        intensity_factor={"widget_type": "FloatSlider", 'min': 0, 'max': 1, 'step':0.1},
+        x_scale={"widget_type": "FloatSlider", 'min': 0, 'max': 1, 'step':0.001},
+        y_scale={"widget_type": "FloatSlider", 'min': 0, 'max': 1, 'step':0.001},
+        z_scale={"widget_type": "FloatSlider", 'min': 0, 'max': 1, 'step':0.001},
+        intensity_factor={"widget_type": "FloatSlider", 'min': 0, 'max': 3, 'step':0.1},
         floodfill_radius={"widget_type": "Slider", 'min': 0, 'max': 20, 'step':1},
         floodfill_factor={"widget_type": "FloatSlider", 'min': 0, 'max': 1, 'step':0.1}
     )
@@ -107,8 +107,8 @@ def get_reconnection_widget(img, binary):
     ) -> Image:
         if not hasattr(widget_necks_segmentation, "counter"):
             widget_necks_segmentation.counter = 0  # it doesn't exist yet, so initialize it
-            widget_necks_segmentation.counter += 1
-        binary = viewer.layers['Binary'].data
+        widget_necks_segmentation.counter += 1
+        binary = source_binary.data
         img = viewer.layers['Image'].data
         result = np.copy(binary)
         if 'Points' not in viewer.layers:
@@ -129,16 +129,20 @@ def get_reconnection_widget(img, binary):
                 z1, y1, x1 = (round(t) for t in p1)
                 z2, y2, x2 = (round(t) for t in p2)
                 (_, top, left), _, (_, bot, right), _ =roi
+                top, bot = sorted([top, bot])
+                left, right = sorted([left, right])
                 top, left, bot, right = round(top), round(left), round(bot), round(right)
+                print(f'points: ({z1}, {x1}, {y1}) and ({z1}, {x2},{y2})')
+                print(f'rect: ({left}, {top}) ({right}, {bot})')
                 cropped = img[:, top:bot, left:right]
                 x1 -= left
                 x2 -= left
                 y1 -= top
                 y2 -= top
                 try:
-                    path = find_path(cropped, (z1, y1, x1), (z2, y2, x2), factor=1, dx=x_scale, dy=y_scale, dz=z_scale)
+                    path = find_path(cropped, (z1, y1, x1), (z2, y2, x2), factor=intensity_factor, dx=x_scale, dy=y_scale, dz=z_scale)
                     if not use_fmm:
-                        neck = floodfill(cropped, path, size=floodfill_radius, factor=floodfill_factor, flood_all=False)
+                        neck = floodfill(cropped, path, size=floodfill_radius, factor=floodfill_factor)
                     else:
                         neck = fmm_floodfill(cropped, path)
                     for p in neck:
@@ -158,7 +162,14 @@ def get_reconnection_widget(img, binary):
     def widget_save(viewer: Viewer, binary_image_for_saving: Image) -> napari.types.LayerDataTuple:
         print('Saved')
         return (binary_image_for_saving.data, {'name': 'Saved result'})
-    
+
     viewer.window.add_dock_widget(widget_save, name='Save result')
+
+    @magicgui(call_button="Clear")
+    def widget_clear_points(viewer: Viewer):
+        viewer.layers['Points'].data = []
+        viewer.layers['ROIs'].data = []
+    
+    viewer.window.add_dock_widget(widget_clear_points, name='Clear points and ROIs')
     
     return viewer
