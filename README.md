@@ -8,6 +8,7 @@
 ```cmd
 cd PATH_TO_CODE
 conda create --name spine-analysis -c conda-forge --file requirements.txt -y
+conda activate spine-analysis
 pip install napari[all]
 ```
 ## Run

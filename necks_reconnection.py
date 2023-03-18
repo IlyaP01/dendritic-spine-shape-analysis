@@ -57,12 +57,23 @@ def floodfill(img, path, size=5, factor=0.6):
     return flooded
 
 
-def fmm_floodfill(img, path):
+def fmm_floodfill(img, path, fmm_ext_factor, fmm_int_factor, radius):
     print("Start FMM floodfill")
     init_contour = np.zeros(img.shape)
+    pipe = np.zeros(img.shape)
+    box_coords = list(product(range(-radius, radius + 1), range(-radius, radius + 1),  range(-radius, radius + 1)))
+    z, h, w = img.shape
     for p in path:
         init_contour[p[0]][p[1]][p[2]] = 1
-    seg = morphological_chan_vese(img, num_iter=500, init_level_set=init_contour, lambda1=1, lambda2=2)
+        for coord in box_coords:
+            k = p[0] + coord[0]
+            i = p[1] + coord[1]
+            j = p[2] + coord[2]
+            if 0 <= i and i < h and 0 <= j and j < w and 0 <= k < z:
+                pipe[k][i][j] = img[k][i][j]
+
+    seg = morphological_chan_vese(pipe, num_iter=100, init_level_set=init_contour, 
+        lambda1=fmm_ext_factor, lambda2=fmm_int_factor, smoothing=0)
     print("FMM floodfill Finished")
     return np.argwhere(seg>0)
 
@@ -84,7 +95,7 @@ def get_reconnection_widget(img, binary):
     viewer = napari.view_image(img, name='Image', title='Necks reconnection')
     viewer.add_image(binary, name='Binary', colormap='green', opacity=0.2)
     viewer.add_image(binary, name='Saved result', colormap='green', opacity=0.2, visible=False)
-    viewer.add_points(ndim=3)
+    viewer.add_points(ndim=3, size=3)
     viewer.add_shapes(ndim=3, name='ROIs')
 
     @magicgui(
@@ -94,16 +105,20 @@ def get_reconnection_widget(img, binary):
         z_scale={"widget_type": "FloatSlider", 'min': 0, 'max': 1, 'step':0.001},
         intensity_factor={"widget_type": "FloatSlider", 'min': 0, 'max': 3, 'step':0.1},
         floodfill_radius={"widget_type": "Slider", 'min': 0, 'max': 20, 'step':1},
-        floodfill_factor={"widget_type": "FloatSlider", 'min': 0, 'max': 1, 'step':0.1}
+        floodfill_factor={"widget_type": "FloatSlider", 'min': 0, 'max': 1, 'step':0.1},
+        fmm_ext_factor={"widget_type": "FloatSlider", 'min': 1, 'max': 10, 'step':0.5},
+        fmm_int_factor={"widget_type": "FloatSlider", 'min': 1, 'max': 10, 'step':0.5}
     )
     def widget_necks_segmentation(viewer: Viewer, source_binary: Image,
         x_scale=1,
         y_scale=1,
         z_scale=1,
         intensity_factor=1,
+        floodfill_radius = 4,
+        floodfill_factor = 0.8,
         use_fmm=False,
-        floodfill_radius = 5,
-        floodfill_factor = 0.8                          
+        fmm_ext_factor=2,
+        fmm_int_factor=6                          
     ) -> Image:
         if not hasattr(widget_necks_segmentation, "counter"):
             widget_necks_segmentation.counter = 0  # it doesn't exist yet, so initialize it
@@ -144,7 +159,7 @@ def get_reconnection_widget(img, binary):
                     if not use_fmm:
                         neck = floodfill(cropped, path, size=floodfill_radius, factor=floodfill_factor)
                     else:
-                        neck = fmm_floodfill(cropped, path)
+                        neck = fmm_floodfill(cropped, path,fmm_ext_factor, fmm_int_factor, floodfill_radius)
                     for p in neck:
                         result[p[0]][top+p[1]][left+p[2]] = 255
                         
